@@ -47,6 +47,11 @@ resource "cloudflare_ruleset" "cache" {
       edge_ttl = {
         mode    = "override_origin"
         default = 31536000
+        # Never cache errors: a 404 fetched before an upload would otherwise stick for a year.
+        status_code_ttl = [{
+          status_code_range = { from = 400, to = 599 }
+          value             = -1
+        }]
       }
       browser_ttl = {
         mode = "respect_origin"
