@@ -1,33 +1,38 @@
 # infra
 
-Personal infrastructure for `sharosoo.com`, managed as code.
+Terraform for sharosoo's infrastructure.
 
 ## Stacks
 
-|Stack|Provider|Manages|
-|---|---|---|
-|`cloudflare/`|Cloudflare (account `93b84e89…`, zone `sharosoo.com`)|R2 bucket `sharosoo-cdn`, custom domain `cdn.sharosoo.com`, bucket CORS|
+|Stack|Manages|
+|---|---|
+|`cloudflare/`|R2 bucket `sharosoo-cdn`, custom domain `cdn.sharosoo.com`, CORS, edge cache rule|
 
-Not managed here (yet): `arthub-assets` bucket and `artifact.sharosoo.com` (owned by the `artifact-hub` repo), DNS records outside R2 custom domains.
+## Usage
+
+```sh
+export CLOUDFLARE_API_TOKEN=...
+terraform -chdir=cloudflare init
+terraform -chdir=cloudflare plan
+terraform -chdir=cloudflare apply
+```
+
+Token permissions (custom token, scoped to the sharosoo account and the `sharosoo.com` zone):
+
+|Scope|Permission|
+|---|---|
+|Account|Workers R2 Storage: Edit|
+|Zone|Zone: Read|
+|Zone|DNS: Edit|
+|Zone|Cache Rules: Edit|
 
 ## CDN
 
-`https://cdn.sharosoo.com/<key>` serves objects of R2 bucket `sharosoo-cdn` through the Cloudflare edge.
-
-- Uploads: use the [`cdn`](https://github.com/sharosoo/cdn) CLI, not raw API calls. It sets `Content-Type` and `Cache-Control` and refuses to overwrite published keys.
-- Caching: objects carry `Cache-Control: public, max-age=31536000, immutable` by default. Changing a published file means uploading under a new key; overwriting serves stale bytes from caches.
+- `https://cdn.sharosoo.com/<key>` serves bucket `sharosoo-cdn`.
+- Edge TTL is one year (cache rule). Browser TTL comes from each object's `Cache-Control`.
+- Upload with [`sharosoo-cdn`](https://github.com/sharosoo/sharosoo-cdn); it sets headers and purges the edge on overwrite and delete.
 - CORS: `GET`/`HEAD` from any origin.
-- Key layout: `<topic>/<file>`, e.g. `goa2/board.png`. Keys from the former `sharosoo/image` GitHub repo kept their paths.
-
-## Running Terraform
-
-```sh
-scripts/tf cloudflare plan
-scripts/tf cloudflare apply
-```
-
-`scripts/tf` uses `CLOUDFLARE_API_TOKEN` if set, otherwise the wrangler OAuth login (`bunx wrangler login`, refreshed automatically). The OAuth login cannot read or edit DNS records; resources that need `dns:edit` or `cache_purge` require a scoped API token in `CLOUDFLARE_API_TOKEN`.
 
 ## State
 
-`cloudflare/terraform.tfstate` is committed. The repository is private and the managed resources hold no secrets. Move it to an R2 S3 backend once an R2 access key exists; check the state for secrets before adding resources that have them (API tokens, Workers secrets).
+`cloudflare/terraform.tfstate` is committed. It holds no secrets; keep it that way, or move to a remote backend before adding resources that store secrets.

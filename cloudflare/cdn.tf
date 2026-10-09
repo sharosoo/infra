@@ -1,5 +1,4 @@
 # Public asset CDN: R2 bucket served at cdn.sharosoo.com through the Cloudflare edge.
-# Objects carry their own Cache-Control (set by the `cdn` CLI), so no zone cache rules are needed.
 
 resource "cloudflare_r2_bucket" "cdn" {
   account_id = var.account_id
@@ -28,5 +27,31 @@ resource "cloudflare_r2_bucket_cors" "cdn" {
       origins = ["*"]
     }
     max_age_seconds = 86400
+  }]
+}
+
+# Edge keeps objects for a year regardless of the browser TTL in each object's Cache-Control.
+# The `sharosoo-cdn` CLI purges a URL whenever it overwrites or deletes the object behind it.
+resource "cloudflare_ruleset" "cache" {
+  zone_id = var.zone_id
+  name    = "default"
+  kind    = "zone"
+  phase   = "http_request_cache_settings"
+
+  rules = [{
+    description = "cdn.sharosoo.com: 1 year edge TTL"
+    expression  = "(http.host eq \"cdn.sharosoo.com\")"
+    action      = "set_cache_settings"
+    action_parameters = {
+      cache = true
+      edge_ttl = {
+        mode    = "override_origin"
+        default = 31536000
+      }
+      browser_ttl = {
+        mode = "respect_origin"
+      }
+    }
+    enabled = true
   }]
 }
